@@ -3,8 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/calebmcelroy/wav"
 	"github.com/go-audio/audio"
-	"github.com/go-audio/wav"
 	"github.com/maruel/natural"
 	"os"
 	"path/filepath"
