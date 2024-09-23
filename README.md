@@ -14,12 +14,16 @@ This tool is useful for extracting X32 X-LIVE SD card recordings, which are save
 
 After downloading the binary for your platform, you can run the tool using the following command:
 
-Mac / Linux:
+### Mac / Linux:
+
+_Run in **Terminal**:_
 ```bash
 wav-track-extract --in <input-directory> --out <output-directory>
 ```
 
-Windows:
+### Windows:
+
+_Run in **Command Prompt**:_
 ```bash
 wav-track-extract.exe --in <input-directory> --out <output-directory>
 ```
