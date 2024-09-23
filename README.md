@@ -24,8 +24,9 @@ Windows:
 wav-track-extract.exe --in <input-directory> --out <output-directory>
 ```
 
-- `--in`: Directory containing the input WAV files. (Defaults to the current directory if not provided.)
-- `--out`: Directory where the output WAV files will be saved. (Required)
+- `--in <folder>`: Directory containing the input WAV files. (Defaults to the current directory if not provided.)
+- `--out <folder>`: Directory where the output WAV files will be saved. (Required)
+- `--force`: Overwrite existing output files.
 
 ## Installation
 

@@ -19,14 +19,34 @@ func main() {
 
 	inputDirFlag := flag.String("in", ".", "Folder containing input WAV files")
 	outputDirFlag := flag.String("out", "", "Folder where output files will be saved")
+	forceFlag := flag.Bool("force", false, "Overwrite existing files in output folder")
 	flag.Parse()
 
 	inputDir := *inputDirFlag
 	outputDir := *outputDirFlag
+	force := *forceFlag
 
 	if outputDir == "" {
 		fmt.Println("Error output directory not specified. Please add parameter: --out=path/to/your/folder")
 		os.Exit(1)
+	}
+
+	// throw error if output directory contains wav files
+	outputDirFiles, err := filepath.Glob(filepath.Join(outputDir, "*.wav"))
+
+	if !force && err == nil && len(outputDirFiles) > 0 {
+		fmt.Println("Warning! Output folder already contains wav files. Add --force parameter if you want to overwrite files.")
+		os.Exit(1)
+	}
+
+	if force {
+		for _, file := range outputDirFiles {
+			err := os.Remove(file)
+			if err != nil {
+				fmt.Printf("Error removing file %s: %v\n", file, err)
+				os.Exit(1)
+			}
+		}
 	}
 
 	files, err := filepath.Glob(filepath.Join(inputDir, "*.wav"))
