@@ -30,8 +30,8 @@ wav-extract.exe --in <input-directory> --out <output-directory>
 
 - `--in <folder>`: Directory containing the input WAV files. (Defaults to the current directory if not provided.)
 - `--out <folder>`: Directory where the output WAV files will be saved. (Required)
-- `--stereo "1/2,5/6"`: Specify stereo pairs using comma-separated channel numbers (e.g., “1/2,5/6”). Channels not included in these pairs will be extracted as mono. By default, all channels are extracted as mono if no stereo pairs are specified. This cannot be used in conjunction with `--channel`.
-- `--channels "1/2,5"`: Specify stereo pairs & mono channels to be extracted using comma-separated channel numbers (e.g., "1/2,5"). Channels not included will NOT be extracted. This cannot be used in conjunction with `--stereo`.
+- `--stereo "1/2,5/6"`: Specify stereo pairs using comma-separated channel numbers (e.g., “1/2,5/6”). Channels not included in these pairs will be extracted as mono. By default, all channels are extracted as mono if no stereo pairs are specified. This cannot be used in conjunction with --channel.
+- `--channels "1/2,5"`: Specify stereo pairs & mono channels to be extracted using comma-separated channel numbers (e.g., "1/2,5"). Channels not included will NOT be extracted. This cannot be used in conjunction with --stereo.
 - `--force`: Overwrite existing output files.
 
 ## Installation
