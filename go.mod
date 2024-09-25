@@ -1,4 +1,4 @@
-module github.com/calebmcelroy/wav-track-extract
+module github.com/calebmcelroy/wav-extract
 
 go 1.23.0
 

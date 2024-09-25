@@ -2,7 +2,7 @@
 OUTPUT_DIR = bin
 
 # Define package name (this should be the name of your Go project)
-PACKAGE_NAME = wav-track-extract
+PACKAGE_NAME = wav-extract
 
 # Platforms to build for (add/remove as needed)
 PLATFORMS = \

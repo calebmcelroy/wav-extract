@@ -1,6 +1,6 @@
-# wav-track-extract
+# wav-extract
 
-**wav-track-extract** is a command-line tool designed to process directories of multi-channel (interweaved) WAV files. It extracts each individual track from across multiple files and combines them into separate, single-track WAV files for easier management and further processing.
+**wav-extract** is a command-line tool designed to process directories of multi-channel (interweaved) WAV files. It extracts each individual track from across multiple files and combines them into separate, single-track WAV files for easier management and further processing.
 
 This tool is useful for extracting X32 X-LIVE SD card recordings, which are saved as multi-channel WAV files, into individual tracks for mixing, editing, and mastering.
 
@@ -18,14 +18,14 @@ After downloading the binary for your platform, you can run the tool using the f
 
 _Run in **Terminal**:_
 ```bash
-wav-track-extract --in <input-directory> --out <output-directory>
+wav-extract --in <input-directory> --out <output-directory>
 ```
 
 ### Windows:
 
 _Run in **Command Prompt**:_
 ```bash
-wav-track-extract.exe --in <input-directory> --out <output-directory>
+wav-extract.exe --in <input-directory> --out <output-directory>
 ```
 
 - `--in <folder>`: Directory containing the input WAV files. (Defaults to the current directory if not provided.)
@@ -38,32 +38,32 @@ wav-track-extract.exe --in <input-directory> --out <output-directory>
 You can download pre-built binaries for your operating system from the releases section. Use the following commands to download and set up the tool for your platform:
 
 ### Windows:
-1. Download the `wav-track-extract.exe` file: https://raw.githubusercontent.com/calebmcelroy/wav-track-extract/master/bin/windows/amd64/wav-track-extract.exe
+1. Download the `wav-extract.exe` file: https://raw.githubusercontent.com/calebmcelroy/wav-extract/master/bin/windows/amd64/wav-extract.exe
 2. Move the `.exe` file to a directory such as `C:\Users\<Your User>`.
 3. Add the directory to your `PATH` environment variable ([see screenshots](https://medium.com/@kevinmarkvi/how-to-add-executables-to-your-path-in-windows-5ffa4ce61a53)):
    - Right-click on the Windows Logo and click "System".
    - Click on "Advanced System Settings".
    - Click the "Environment Variables" button.
    - In the "System variables" section, scroll down and select "Path", then click "Edit".
-   - Click "New" and add `C:\Users\<Your User>` (or wherever you've placed `wav-track-extract.exe`).
+   - Click "New" and add `C:\Users\<Your User>` (or wherever you've placed `wav-extract.exe`).
    - Click **OK** to save.
 
 ### macOS (Apple Silicon):
 Run in Terminal:
 ```bash
-sudo curl -L -o /usr/local/bin/wav-track-extract https://raw.githubusercontent.com/calebmcelroy/wav-track-extract/master/bin/darwin/arm64/wav-track-extract && sudo chmod +x /usr/local/bin/wav-track-extract
+sudo curl -L -o /usr/local/bin/wav-extract https://raw.githubusercontent.com/calebmcelroy/wav-extract/master/bin/darwin/arm64/wav-extract && sudo chmod +x /usr/local/bin/wav-extract
 ```
 
 ### macOS (Intel):
 Run in Terminal:
 ```bash
-sudo curl -L -o /usr/local/bin/wav-track-extract https://raw.githubusercontent.com/calebmcelroy/wav-track-extract/master/bin/darwin/amd64/wav-track-extract && sudo chmod +x /usr/local/bin/wav-track-extract
+sudo curl -L -o /usr/local/bin/wav-extract https://raw.githubusercontent.com/calebmcelroy/wav-extract/master/bin/darwin/amd64/wav-extract && sudo chmod +x /usr/local/bin/wav-extract
 ```
 
 ### Linux:
 Run in Terminal:
 ```bash
-sudo curl -L -o /usr/local/bin/wav-track-extract https://raw.githubusercontent.com/calebmcelroy/wav-track-extract/master/bin/linux/amd64/wav-track-extract && sudo chmod +x /usr/local/bin/wav-track-extract
+sudo curl -L -o /usr/local/bin/wav-extract https://raw.githubusercontent.com/calebmcelroy/wav-extract/master/bin/linux/amd64/wav-extract && sudo chmod +x /usr/local/bin/wav-extract
 ```
 
 ## Building From Source
@@ -71,13 +71,13 @@ sudo curl -L -o /usr/local/bin/wav-track-extract https://raw.githubusercontent.c
 If you prefer to build the project from source, you can use the provided `Makefile` to compile the binaries for all platforms.
 
 1. Clone the repository:
-   `git clone https://github.com/calebmcelroy/wav-track-extract.git`
+   `git clone https://github.com/calebmcelroy/wav-extract.git`
 
 2. Install the Go programming language:
    https://golang.org/doc/install
 
 3. Navigate to the project directory:
-   `cd wav-track-extract`
+   `cd wav-extract`
 
 4. Build for all platforms:
    `make`
