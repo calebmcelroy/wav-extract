@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -47,17 +48,22 @@ func main() {
 		}
 	}
 
-	files, err := filepath.Glob(filepath.Join(inputDir, "*.wav"))
-	if err != nil || len(files) == 0 {
-		if inputDir == "." {
-			fmt.Println("Error: no wav files found in the current directory. Please consider adding parameter: --in=path/to/your/wavs or run the program in a folder containing the wav files.")
+	var files []string
+	if strings.HasSuffix(inputDir, ".wav") {
+		files = []string{inputDir}
+	} else {
+		files, err = filepath.Glob(filepath.Join(inputDir, "*.wav"))
+		if err != nil || len(files) == 0 {
+			if inputDir == "." {
+				fmt.Println("Error: no wav files found in the current directory. Please consider adding parameter: --in=path/to/your/wavs or run the program in a folder containing the wav files.")
+				os.Exit(1)
+			}
+			fmt.Println("Error: no wav files found in the input directory.")
 			os.Exit(1)
 		}
-		fmt.Println("Error: no wav files found in the input directory.")
-		os.Exit(1)
-	}
 
-	sort.Sort(natural.StringSlice(files))
+		sort.Sort(natural.StringSlice(files))
+	}
 
 	os.MkdirAll(outputDir, os.ModePerm)
 
