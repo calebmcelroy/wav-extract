@@ -84,6 +84,13 @@ func extract(decoders []*Decoder, tracks []*Track, progressInterval time.Duratio
 		totalBytes += decoder.PCMLen()
 	}
 
+	totalTrackChannels := int64(0)
+	for _, track := range tracks {
+		totalTrackChannels += int64(len(track.Channels))
+	}
+
+	totalBytes = (totalBytes * totalTrackChannels) / int64(decoders[0].NumChans)
+
 	done := false
 	wg := sync.WaitGroup{}
 	wg.Add(len(decoders))

@@ -17,6 +17,7 @@ func main() {
 	outputDirFlag := flag.String("out", "", "Folder where output files will be saved")
 	forceFlag := flag.Bool("force", false, "Overwrite existing files in output folder")
 	stereoFlag := flag.String("stereo", "", "Stereo pairs to extract (e.g. 1/2,3/4)")
+	channelsFlag := flag.String("channels", "", "Channels to extract (e.g. 1/2,5)")
 	flag.Parse()
 
 	inputDir := *inputDirFlag
@@ -74,7 +75,7 @@ func main() {
 	}()
 
 	decoder := decoders[0]
-	tracks, err := initTracks(*stereoFlag, outputDir, int(decoder.NumChans), int(decoder.BitDepth), int(decoder.SampleRate))
+	tracks, err := initTracks(*stereoFlag, *channelsFlag, outputDir, int(decoder.NumChans), int(decoder.BitDepth), int(decoder.SampleRate))
 
 	if err != nil {
 		fmt.Println("Error initializing tracks:", err)
