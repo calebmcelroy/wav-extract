@@ -4,6 +4,8 @@
 
 Use case: this tool is useful for extracting X32 X-LIVE SD card recordings into individual tracks for mixing, editing, and mastering.
 
+I wrote a blog post about using this tool for that purpose: [Unpack X32 X-LIVE SD Card Recordings into Individual Tracks](https://dev.to/calebmcelroy/unpack-x32-x-live-sd-card-recordings-into-individual-tracks-4006)
+
 ## Features
 
 - Supports Windows, Linux, and macOS (Intel and Apple Silicon)
