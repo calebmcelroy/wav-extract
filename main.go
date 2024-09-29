@@ -31,7 +31,7 @@ func main() {
 	}
 
 	// throw error if output directory contains wav files
-	outputDirFiles, err := filepath.Glob(filepath.Join(outputDir, "*.wav"))
+	outputDirFiles, err := getFilesWithExtension(outputDir, []string{"wav"})
 
 	if !force && err == nil && len(outputDirFiles) > 0 {
 		fmt.Println("Warning! Output folder already contains wav files. Add --force parameter if you want to overwrite files.")
@@ -48,23 +48,22 @@ func main() {
 		}
 	}
 
-	var files []string
-	if strings.HasSuffix(inputDir, ".wav") {
-		files = []string{inputDir}
-	} else {
-		files, err = filepath.Glob(filepath.Join(inputDir, "*.wav"))
-		if err != nil || len(files) == 0 {
-			if inputDir == "." {
-				fmt.Println("Error: no wav files found in the current directory. Please consider adding parameter: --in=path/to/your/wavs or run the program in a folder containing the wav files.")
-				os.Exit(1)
-			}
-			fmt.Println("Error: no wav files found in the input directory.")
-			os.Exit(1)
-		}
-
-		sort.Sort(natural.StringSlice(files))
+	files, err := getFilesWithExtension(inputDir, []string{"wav"})
+	if err != nil {
+		fmt.Printf("Error: reading input directory: %v\n", err)
+		os.Exit(1)
 	}
 
+	if len(files) == 0 {
+		if inputDir == "." {
+			fmt.Println("Error: no wav files found in the current directory. Please consider adding parameter: --in=path/to/your/wavs or run the program in a folder containing the wav files.")
+			os.Exit(1)
+		}
+		fmt.Println("Error: no wav files found in the input directory.")
+		os.Exit(1)
+	}
+
+	sort.Sort(natural.StringSlice(files))
 	os.MkdirAll(outputDir, os.ModePerm)
 
 	decoders, err := initDecoders(files)
@@ -125,4 +124,40 @@ func printProgress(p Progress) {
 	timeRemaining := time.Duration((p.TotalBytes-p.BytesWritten)/bytesPerSecond) * time.Second
 	timeRemaining += time.Second
 	fmt.Printf("\r%d%% [%s] %d MB/s — %v remaining", percent, progressStr, bytesPerSecond/1024/1024, timeRemaining)
+}
+
+func getFilesWithExtension(dir string, extensions []string) ([]string, error) {
+	// case insensitive
+
+	// if dir is a file, return it
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	if !dirInfo.IsDir() {
+		if strings.HasSuffix(strings.ToLower(dir), ".wav") {
+			return []string{dir}, nil
+		}
+
+		return nil, fmt.Errorf("file %s is not a wav file", dir)
+	}
+
+	// if dir is a directory, return all files with the extension upper and lower case
+	var files []string
+	for _, ext := range extensions {
+		filesWithExt, err := filepath.Glob(filepath.Join(dir, "*."+strings.ToLower(ext)))
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, filesWithExt...)
+
+		filesWithExt, err = filepath.Glob(filepath.Join(dir, "*."+strings.ToUpper(ext)))
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, filesWithExt...)
+	}
+
+	return files, nil
 }
