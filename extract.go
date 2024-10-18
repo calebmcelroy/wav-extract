@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"github.com/calebmcelroy/wav"
 	"github.com/go-audio/audio"
@@ -26,7 +27,7 @@ type TrackWriteTask struct {
 
 type Progress struct {
 	TotalBytes   int64
-	BytesWritten int64
+	CurrentBytes int64
 }
 
 func initDecoders(files []string) ([]*Decoder, error) {
@@ -70,9 +71,9 @@ func initDecoders(files []string) ([]*Decoder, error) {
 	return decoders, nil
 }
 
-func extract(decoders []*Decoder, tracks []*Track, progressInterval time.Duration, progressFunc func(p Progress)) {
+func extract(ctx context.Context, decoders []*Decoder, tracks []*Track, progressInterval time.Duration, progressFunc func(p Progress)) {
 	totalBytes := int64(0)
-	bytesWritten := &atomic.Int64{}
+	bytesProcessed := &atomic.Int64{}
 	decoderPositions := make([]int64, len(decoders))
 	for i, decoder := range decoders {
 		decoderPositions[i] = totalBytes / int64(decoder.NumChans)
@@ -83,13 +84,6 @@ func extract(decoders []*Decoder, tracks []*Track, progressInterval time.Duratio
 		}
 		totalBytes += decoder.PCMLen()
 	}
-
-	totalTrackChannels := int64(0)
-	for _, track := range tracks {
-		totalTrackChannels += int64(len(track.Channels))
-	}
-
-	totalBytes = (totalBytes * totalTrackChannels) / int64(decoders[0].NumChans)
 
 	done := false
 	wg := sync.WaitGroup{}
@@ -106,16 +100,35 @@ func extract(decoders []*Decoder, tracks []*Track, progressInterval time.Duratio
 
 			progressFunc(Progress{
 				TotalBytes:   totalBytes,
-				BytesWritten: bytesWritten.Load(),
+				CurrentBytes: bytesProcessed.Load(),
 			})
 		}
 	}()
 
 	// decode in parallel
+	firstDecoder := decoders[0]
+	numChannels := int(firstDecoder.NumChans)
+	sampleRate := int(firstDecoder.SampleRate)
+	bitDepth := int(firstDecoder.BitDepth)
+	bytesPerSecond := sampleRate * (bitDepth / 8)
+	chunkSize := bytesPerSecond / 128
+	intBufferPool := &sync.Pool{
+		New: func() interface{} {
+			return &audio.IntBuffer{
+				Data: make([]int, chunkSize*numChannels),
+				Format: &audio.Format{
+					SampleRate:  sampleRate,
+					NumChannels: numChannels,
+				},
+				SourceBitDepth: bitDepth,
+			}
+		},
+	}
+
 	for i, decoder := range decoders {
 		go func() {
 			defer wg.Done()
-			err := extractTracks(decoder, tracks, bytesWritten, decoderPositions[i])
+			err := extractTracks(ctx, decoder, tracks, intBufferPool, bytesProcessed, decoderPositions[i])
 			if err != nil {
 				fmt.Println()
 				fmt.Printf("Error processing file %s: %v\n", decoder.Name, err)
@@ -128,26 +141,14 @@ func extract(decoders []*Decoder, tracks []*Track, progressInterval time.Duratio
 	done = true
 }
 
-func extractTracks(decoder *Decoder, tracks []*Track, bytesWritten *atomic.Int64, tracksPos int64) error {
+func extractTracks(ctx context.Context, decoder *Decoder, tracks []*Track, bufPool *sync.Pool, bytesProcessed *atomic.Int64, tracksPos int64) error {
 	numChannels := int(decoder.NumChans)
 	sampleRate := int(decoder.SampleRate)
 	bitDepth := int(decoder.BitDepth)
+	byteMultiplier := int64(bitDepth / 8)
 
 	bytesPerSecond := sampleRate * (bitDepth / 8)
-	chunkSize := bytesPerSecond
-
-	intBufferPool := sync.Pool{
-		New: func() interface{} {
-			return &audio.IntBuffer{
-				Data: make([]int, chunkSize*numChannels),
-				Format: &audio.Format{
-					SampleRate:  sampleRate,
-					NumChannels: numChannels,
-				},
-				SourceBitDepth: bitDepth,
-			}
-		},
-	}
+	chunkSize := bytesPerSecond / 128
 
 	trackPos := make([]int64, len(tracks))
 	for i, track := range tracks {
@@ -168,12 +169,16 @@ func extractTracks(decoder *Decoder, tracks []*Track, bytesWritten *atomic.Int64
 
 	trackChans := make([]chan TrackWriteTask, len(tracks))
 	for i := range tracks {
-		trackChans[i] = make(chan TrackWriteTask, len(tracks))
+		trackChans[i] = make(chan TrackWriteTask, 1)
 	}
 
 	for trackIndex, track := range tracks {
 		go func() {
 			for task := range trackChans[trackIndex] {
+				if ctx.Err() != nil {
+					os.Exit(1)
+				}
+
 				for i := 0; i < task.BytesWritten; i += numChannels {
 					for j, ch := range track.Channels {
 						trackDataIndex := (i/numChannels)*len(track.Channels) + j
@@ -188,19 +193,22 @@ func extractTracks(decoder *Decoder, tracks []*Track, bytesWritten *atomic.Int64
 				}
 
 				trackPos[trackIndex] += n
-				bytesWritten.Add(n)
 				task.Wg.Done()
 			}
 		}()
 	}
 
 	for {
+		if ctx.Err() != nil {
+			os.Exit(1)
+		}
+
 		if decoder.EOF() {
 			break
 		}
 
-		rawPCMBuffer := intBufferPool.Get().(*audio.IntBuffer)
-		defer intBufferPool.Put(rawPCMBuffer)
+		rawPCMBuffer := bufPool.Get().(*audio.IntBuffer)
+		defer bufPool.Put(rawPCMBuffer)
 		n, err := decoder.PCMBuffer(rawPCMBuffer)
 
 		if err != nil {
@@ -221,8 +229,11 @@ func extractTracks(decoder *Decoder, tracks []*Track, bytesWritten *atomic.Int64
 				BytesWritten: n,
 			}
 		}
-
 		wg.Wait()
+
+		bytesProcessed.Add(int64(n) * byteMultiplier)
+		bufPool.Put(rawPCMBuffer)
+
 	}
 
 	for i := range tracks {

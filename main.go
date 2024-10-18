@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"github.com/maruel/natural"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -97,14 +100,17 @@ func main() {
 		fmt.Println("\n\nDone in", time.Since(StartTime))
 	}()
 
-	extract(decoders, tracks, time.Millisecond*500, printProgress)
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT)
+	defer cancel()
+
+	extract(ctx, decoders, tracks, time.Millisecond*500, printProgress)
 }
 
 func printProgress(p Progress) {
 	if p.TotalBytes == 0 {
 		return
 	}
-	percent := (p.BytesWritten * 100) / p.TotalBytes
+	percent := (p.CurrentBytes * 100) / p.TotalBytes
 	activeCharPos := int((30 * percent) / 100)
 	progressStr := ""
 	for pos := range 30 {
@@ -115,15 +121,18 @@ func printProgress(p Progress) {
 		}
 	}
 
-	bytesPerSecond := (p.BytesWritten * 1000) / time.Since(StartTime).Milliseconds()
+	bytesPerSecond := (p.CurrentBytes * 1000) / time.Since(StartTime).Milliseconds()
 
 	if bytesPerSecond == 0 {
 		return
 	}
 
-	timeRemaining := time.Duration((p.TotalBytes-p.BytesWritten)/bytesPerSecond) * time.Second
+	timeRemaining := time.Duration((p.TotalBytes-p.CurrentBytes)/bytesPerSecond) * time.Second
 	timeRemaining += time.Second
-	fmt.Printf("\r%d%% [%s] %d MB/s — %v remaining", percent, progressStr, bytesPerSecond/1024/1024, timeRemaining)
+
+	processedGB := p.CurrentBytes / 1024 / 1024 / 1024
+	totalGB := p.TotalBytes / 1024 / 1024 / 1024
+	fmt.Printf("\r%d%% [%s] %dGB / %dGB (%d MB/s) — %v remaining", percent, progressStr, processedGB, totalGB, bytesPerSecond/1024/1024, timeRemaining)
 }
 
 func getFilesWithExtension(dir string, extensions []string) ([]string, error) {
