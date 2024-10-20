@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/calebmcelroy/wav"
+	"github.com/calebmcelroy/wav-extract/wav"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -10,9 +10,27 @@ import (
 )
 
 type Track struct {
+	writer *wav.Writer
+	file   *os.File
+
 	Name     string
 	Channels []int
-	Encoder  *wav.Encoder
+}
+
+func (t *Track) WriteAt(p []byte, off int64) (n int, err error) {
+	return t.writer.WriteAt(p, off)
+}
+
+func (t *Track) Close() error {
+	if err := t.writer.Close(); err != nil {
+		return err
+	}
+
+	if err := t.file.Close(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func initTracks(stereoStr string, channelsStr string, outputDir string, numChans, bitDepth, sampleRate int) ([]*Track, error) {
@@ -40,20 +58,8 @@ func initTracks(stereoStr string, channelsStr string, outputDir string, numChans
 	// Parse stereo pairs from the stereoStr
 	if channelPairs != nil && len(channelPairs) > 0 {
 		for _, channels := range channelPairs {
-			// Create Track for the stereo pair
-			var name string
-			if len(channels) == 2 {
-				name = fmt.Sprintf("track_%dL_%dR.wav", channels[0]+1, channels[1]+1)
-			} else {
-				name = fmt.Sprintf("track_%d.wav", channels[0]+1)
-			}
+			track, err := newTrack(channels, outputDir, sampleRate, bitDepth)
 
-			track := &Track{
-				Name:     name,
-				Channels: channels,
-			}
-
-			err = initTrackEncoder(track, outputDir, sampleRate, bitDepth)
 			if err != nil {
 				return nil, err
 			}
@@ -74,11 +80,7 @@ func initTracks(stereoStr string, channelsStr string, outputDir string, numChans
 
 		for ch := 1; ch <= numChans; ch++ {
 			if !usedChannels[ch] {
-				track := &Track{
-					Name:     fmt.Sprintf("track_%d.wav", ch),
-					Channels: []int{ch - 1}, // Zero-based indexing
-				}
-				err := initTrackEncoder(track, outputDir, sampleRate, bitDepth)
+				track, err := newTrack([]int{ch - 1}, outputDir, sampleRate, bitDepth)
 				if err != nil {
 					return nil, err
 				}
@@ -147,15 +149,26 @@ func parseChannelsString(str string, numChans int, allowMono bool) ([][]int, err
 	return channels, nil
 }
 
-func initTrackEncoder(t *Track, outputDir string, sampleRate, bitDepth int) error {
-	outFilePath := filepath.Join(outputDir, t.Name)
-	outFile, err := os.Create(outFilePath)
-	if err != nil {
-		return fmt.Errorf("failed to create output file '%s': %v", outFilePath, err)
+func newTrack(channels []int, outputDir string, sampleRate, bitsPerSample int) (*Track, error) {
+	var name string
+	if len(channels) == 2 {
+		name = fmt.Sprintf("track_%dL_%dR.wav", channels[0]+1, channels[1]+1)
+	} else {
+		name = fmt.Sprintf("track_%d.wav", channels[0]+1)
 	}
 
-	// Initialize the encoder with the appropriate number of channels
-	t.Encoder = wav.NewEncoder(outFile, sampleRate, bitDepth, len(t.Channels), 1)
+	outFilePath := filepath.Join(outputDir, name)
+	outFile, err := os.Create(outFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create output file '%s': %v", outFilePath, err)
+	}
 
-	return nil
+	wavWriter := wav.NewWriter(outFile, 1, len(channels), sampleRate, bitsPerSample)
+
+	return &Track{
+		wavWriter,
+		outFile,
+		name,
+		channels, // Zero-based indexing
+	}, nil
 }

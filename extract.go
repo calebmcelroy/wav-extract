@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/calebmcelroy/wav"
-	"github.com/go-audio/audio"
+	"github.com/calebmcelroy/wav-extract/wav"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -12,15 +12,19 @@ import (
 	"time"
 )
 
-type Decoder struct {
-	wav.Decoder
-	File *os.File
+type WavFile struct {
+	file *os.File
+	*wav.Reader
 	Name string
+}
+
+func (w *WavFile) Close() error {
+	return w.file.Close()
 }
 
 type TrackWriteTask struct {
 	TrackIndex   int
-	PCMBuffer    *audio.IntBuffer
+	Buffer       []byte
 	BytesWritten int
 	Wg           *sync.WaitGroup
 }
@@ -30,8 +34,8 @@ type Progress struct {
 	CurrentBytes int64
 }
 
-func initDecoders(files []string) ([]*Decoder, error) {
-	decoders := make([]*Decoder, len(files))
+func initReaders(files []string) ([]*WavFile, error) {
+	wavFiles := make([]*WavFile, len(files))
 
 	for i, file := range files {
 		f, err := os.Open(file)
@@ -39,57 +43,51 @@ func initDecoders(files []string) ([]*Decoder, error) {
 			return nil, fmt.Errorf("failed to open file %s: %v", file, err)
 		}
 
-		decoder := wav.NewDecoder(f)
-		if decoder == nil {
-			return nil, fmt.Errorf("failed to create decoder for file %s", file)
+		wavReader := wav.NewReader(f)
+		wavFile := WavFile{f, wavReader, filepath.Base(file)}
+
+		if err = wavFile.ReadHeader(); err != nil {
+			return nil, fmt.Errorf("invalid WAV file (%s): %w", file, err)
 		}
 
-		if !decoder.IsValidFile() {
-			return nil, fmt.Errorf("invalid WAV file: %s", file)
-		}
-
-		decoders[i] = &Decoder{
-			Decoder: *decoder,
-			File:    f,
-			Name:    filepath.Base(file),
-		}
+		wavFiles[i] = &wavFile
 	}
 
 	// make sure all channels, sample rates, & bit rates are the same
-	for i := 1; i < len(decoders); i++ {
-		if decoders[i].SampleRate != decoders[i-1].SampleRate {
-			return nil, fmt.Errorf("sample rate mismatch: %d (%s) != %d (%s)", decoders[i].SampleRate, filepath.Base(files[i]), decoders[i-1].SampleRate, filepath.Base(files[i-1]))
+	for i := 1; i < len(wavFiles); i++ {
+		if wavFiles[i].SampleRate != wavFiles[i-1].SampleRate {
+			return nil, fmt.Errorf("sample rate mismatch: %d (%s) != %d (%s)", wavFiles[i].SampleRate, filepath.Base(files[i]), wavFiles[i-1].SampleRate, filepath.Base(files[i-1]))
 		}
-		if decoders[i].NumChans != decoders[i-1].NumChans {
-			return nil, fmt.Errorf("number of channels: %d (%s) != %d (%s)", decoders[i].NumChans, filepath.Base(files[i]), decoders[i-1].NumChans, filepath.Base(files[i-1]))
+		if wavFiles[i].NumChans != wavFiles[i-1].NumChans {
+			return nil, fmt.Errorf("number of channels: %d (%s) != %d (%s)", wavFiles[i].NumChans, filepath.Base(files[i]), wavFiles[i-1].NumChans, filepath.Base(files[i-1]))
 		}
-		if decoders[i].BitDepth != decoders[i-1].BitDepth {
-			return nil, fmt.Errorf("bit depth mismatch: %d (%s) != %d (%s)", decoders[i].BitDepth, filepath.Base(files[i]), decoders[i-1].BitDepth, filepath.Base(files[i-1]))
+		if wavFiles[i].BitsPerSample != wavFiles[i-1].BitsPerSample {
+			return nil, fmt.Errorf("bit depth mismatch: %d (%s) != %d (%s)", wavFiles[i].BitsPerSample, filepath.Base(files[i]), wavFiles[i-1].BitsPerSample, filepath.Base(files[i-1]))
 		}
 	}
 
-	return decoders, nil
+	return wavFiles, nil
 }
 
-func extract(ctx context.Context, decoders []*Decoder, tracks []*Track, progressInterval time.Duration, progressFunc func(p Progress)) {
+func extract(ctx context.Context, wavFiles []*WavFile, tracks []*Track, progressInterval time.Duration, progressFunc func(p Progress)) {
 	totalBytes := int64(0)
 	bytesProcessed := &atomic.Int64{}
-	decoderPositions := make([]int64, len(decoders))
-	for i, decoder := range decoders {
-		decoderPositions[i] = totalBytes / int64(decoder.NumChans)
-		err := decoder.FwdToPCM()
+	wavFilePositions := make([]int64, len(wavFiles))
+	for i, wavFile := range wavFiles {
+		wavFilePositions[i] = totalBytes / int64(wavFile.NumChans)
+		err := wavFile.ReadHeader()
 		if err != nil {
 			fmt.Printf("Error reading PCM data length: %v\n", err)
 			os.Exit(1)
 		}
-		totalBytes += decoder.PCMLen()
+		totalBytes += int64(wavFile.DataSize)
 	}
 
 	done := false
 	wg := sync.WaitGroup{}
-	wg.Add(len(decoders))
+	wg.Add(len(wavFiles))
 
-	// report progress
+	//report progress
 	go func() {
 		for {
 			time.Sleep(progressInterval)
@@ -105,33 +103,19 @@ func extract(ctx context.Context, decoders []*Decoder, tracks []*Track, progress
 		}
 	}()
 
-	// decode in parallel
-	firstDecoder := decoders[0]
-	numChannels := int(firstDecoder.NumChans)
-	sampleRate := int(firstDecoder.SampleRate)
-	bitDepth := int(firstDecoder.BitDepth)
-	bytesPerSecond := sampleRate * (bitDepth / 8)
-	chunkSize := bytesPerSecond / 128
 	intBufferPool := &sync.Pool{
 		New: func() interface{} {
-			return &audio.IntBuffer{
-				Data: make([]int, chunkSize*numChannels),
-				Format: &audio.Format{
-					SampleRate:  sampleRate,
-					NumChannels: numChannels,
-				},
-				SourceBitDepth: bitDepth,
-			}
+			return make([]byte, wavFiles[0].ByteRate)
 		},
 	}
 
-	for i, decoder := range decoders {
+	for i, wavFile := range wavFiles {
 		go func() {
 			defer wg.Done()
-			err := extractTracks(ctx, decoder, tracks, intBufferPool, bytesProcessed, decoderPositions[i])
+			err := extractTracks(ctx, wavFile, tracks, intBufferPool, bytesProcessed, wavFilePositions[i])
 			if err != nil {
 				fmt.Println()
-				fmt.Printf("Error processing file %s: %v\n", decoder.Name, err)
+				fmt.Printf("Error processing file %s: %v\n", wavFile.Name, err)
 				os.Exit(1)
 			}
 		}()
@@ -141,30 +125,15 @@ func extract(ctx context.Context, decoders []*Decoder, tracks []*Track, progress
 	done = true
 }
 
-func extractTracks(ctx context.Context, decoder *Decoder, tracks []*Track, bufPool *sync.Pool, bytesProcessed *atomic.Int64, tracksPos int64) error {
-	numChannels := int(decoder.NumChans)
-	sampleRate := int(decoder.SampleRate)
-	bitDepth := int(decoder.BitDepth)
-	byteMultiplier := int64(bitDepth / 8)
-
-	bytesPerSecond := sampleRate * (bitDepth / 8)
-	chunkSize := bytesPerSecond / 128
-
+func extractTracks(ctx context.Context, wavFile *WavFile, tracks []*Track, bufPool *sync.Pool, bytesProcessed *atomic.Int64, tracksPos int64) error {
 	trackPos := make([]int64, len(tracks))
 	for i, track := range tracks {
 		trackPos[i] = tracksPos * int64(len(track.Channels))
 	}
 
-	trackBuffers := make([]*audio.IntBuffer, len(tracks))
-	for i, track := range tracks {
-		trackBuffers[i] = &audio.IntBuffer{
-			Data: make([]int, chunkSize*len(track.Channels)),
-			Format: &audio.Format{
-				SampleRate:  sampleRate,
-				NumChannels: len(track.Channels),
-			},
-			SourceBitDepth: bitDepth,
-		}
+	trackBuffers := make([][]byte, len(tracks))
+	for i := range tracks {
+		trackBuffers[i] = make([]byte, wavFile.ByteRate)
 	}
 
 	trackChans := make([]chan TrackWriteTask, len(tracks))
@@ -179,20 +148,24 @@ func extractTracks(ctx context.Context, decoder *Decoder, tracks []*Track, bufPo
 					os.Exit(1)
 				}
 
-				for i := 0; i < task.BytesWritten; i += numChannels {
-					for j, ch := range track.Channels {
-						trackDataIndex := (i/numChannels)*len(track.Channels) + j
-						trackBuffers[trackIndex].Data[trackDataIndex] = task.PCMBuffer.Data[i+ch]
+				bytesPerSample := wavFile.BitsPerSample / 8
+				trackBlockAlign := bytesPerSample * len(track.Channels)
+				bufSize := 0
+				for i := 0; i < task.BytesWritten; i += wavFile.BlockAlign {
+					for j, channelIndex := range track.Channels {
+						channelOffset := i + channelIndex*bytesPerSample
+						trackOffset := (i/wavFile.BlockAlign)*trackBlockAlign + j*bytesPerSample
+						bufSize += copy(trackBuffers[trackIndex][trackOffset:], task.Buffer[channelOffset:channelOffset+bytesPerSample])
 					}
 				}
 
-				n, err := track.Encoder.WriteAt(trackBuffers[trackIndex], trackPos[trackIndex])
+				n, err := track.WriteAt(trackBuffers[trackIndex][:bufSize], trackPos[trackIndex])
 				if err != nil {
 					fmt.Printf("Failed to write %s: %v\n", track.Name, err)
 					os.Exit(1)
 				}
 
-				trackPos[trackIndex] += n
+				trackPos[trackIndex] += int64(n)
 				task.Wg.Done()
 			}
 		}()
@@ -203,13 +176,13 @@ func extractTracks(ctx context.Context, decoder *Decoder, tracks []*Track, bufPo
 			os.Exit(1)
 		}
 
-		if decoder.EOF() {
+		buffer := bufPool.Get().([]byte)
+		defer bufPool.Put(buffer)
+		n, err := wavFile.Read(buffer)
+
+		if err == io.EOF {
 			break
 		}
-
-		rawPCMBuffer := bufPool.Get().(*audio.IntBuffer)
-		defer bufPool.Put(rawPCMBuffer)
-		n, err := decoder.PCMBuffer(rawPCMBuffer)
 
 		if err != nil {
 			return fmt.Errorf("failed to read PCM data: %v", err)
@@ -224,16 +197,15 @@ func extractTracks(ctx context.Context, decoder *Decoder, tracks []*Track, bufPo
 		for i := range tracks {
 			trackChans[i] <- TrackWriteTask{
 				TrackIndex:   i,
-				PCMBuffer:    rawPCMBuffer,
+				Buffer:       buffer,
 				Wg:           wg,
 				BytesWritten: n,
 			}
 		}
 		wg.Wait()
 
-		bytesProcessed.Add(int64(n) * byteMultiplier)
-		bufPool.Put(rawPCMBuffer)
-
+		bytesProcessed.Add(int64(n))
+		bufPool.Put(buffer)
 	}
 
 	for i := range tracks {

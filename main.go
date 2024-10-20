@@ -69,7 +69,7 @@ func main() {
 	sort.Sort(natural.StringSlice(files))
 	os.MkdirAll(outputDir, os.ModePerm)
 
-	decoders, err := initDecoders(files)
+	wavFiles, err := initReaders(files)
 
 	if err != nil {
 		fmt.Printf("Error %v\n", err)
@@ -77,13 +77,13 @@ func main() {
 	}
 
 	defer func() {
-		for _, decoder := range decoders {
-			decoder.File.Close()
+		for _, wavFile := range wavFiles {
+			wavFile.Close()
 		}
 	}()
 
-	decoder := decoders[0]
-	tracks, err := initTracks(*stereoFlag, *channelsFlag, outputDir, int(decoder.NumChans), int(decoder.BitDepth), int(decoder.SampleRate))
+	wavFile := wavFiles[0]
+	tracks, err := initTracks(*stereoFlag, *channelsFlag, outputDir, wavFile.NumChans, wavFile.BitsPerSample, wavFile.SampleRate)
 
 	if err != nil {
 		fmt.Println("Error initializing tracks:", err)
@@ -92,7 +92,7 @@ func main() {
 
 	defer func() {
 		for _, track := range tracks {
-			track.Encoder.Close()
+			track.Close()
 		}
 	}()
 
@@ -103,7 +103,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT)
 	defer cancel()
 
-	extract(ctx, decoders, tracks, time.Millisecond*500, printProgress)
+	extract(ctx, wavFiles, tracks, time.Millisecond*500, printProgress)
 }
 
 func printProgress(p Progress) {
@@ -159,13 +159,23 @@ func getFilesWithExtension(dir string, extensions []string) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		files = append(files, filesWithExt...)
+
+		for _, file := range filesWithExt {
+			if !strings.HasPrefix(filepath.Base(file), ".") {
+				files = append(files, file)
+			}
+		}
 
 		filesWithExt, err = filepath.Glob(filepath.Join(dir, "*."+strings.ToUpper(ext)))
 		if err != nil {
 			return nil, err
 		}
-		files = append(files, filesWithExt...)
+
+		for _, file := range filesWithExt {
+			if !strings.HasPrefix(filepath.Base(file), ".") {
+				files = append(files, file)
+			}
+		}
 	}
 
 	return files, nil
