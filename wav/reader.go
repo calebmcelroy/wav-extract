@@ -55,31 +55,30 @@ func (r *Reader) ReadHeader() error {
 		return fmt.Errorf("invalid WAVE header")
 	}
 
-	// read fmt header
-	fmtData := make([]byte, 24)
-	_, err = r.r.Read(fmtData)
-
-	if err != nil {
+	// read fmt chunk header
+	fmtHeader := make([]byte, 8)
+	if _, err = r.r.Read(fmtHeader); err != nil {
 		return err
 	}
-
-	// validate fmt header
-	if string(fmtData[:4]) != "fmt " {
+	if string(fmtHeader[:4]) != "fmt " {
 		return fmt.Errorf("invalid fmt header")
 	}
-
-	// check size of fmt header
-	if binary.LittleEndian.Uint32(fmtData[4:8]) != 16 {
+	fmtSize := int(binary.LittleEndian.Uint32(fmtHeader[4:8]))
+	if fmtSize < 16 {
 		return fmt.Errorf("invalid fmt header size")
 	}
 
-	// read fmt header data (values are little-endian)
-	r.AudioFormat = int(binary.LittleEndian.Uint16(fmtData[8:10]))
-	r.NumChans = int(binary.LittleEndian.Uint16(fmtData[10:12]))
-	r.SampleRate = int(binary.LittleEndian.Uint32(fmtData[12:16]))
-	r.ByteRate = int(binary.LittleEndian.Uint32(fmtData[16:20]))
-	r.BlockAlign = int(binary.LittleEndian.Uint16(fmtData[20:22]))
-	r.BitsPerSample = int(binary.LittleEndian.Uint16(fmtData[22:24]))
+	// read fmt data (only need first 16 bytes, skip rest)
+	fmtData := make([]byte, fmtSize)
+	if _, err = r.r.Read(fmtData); err != nil {
+		return err
+	}
+	r.AudioFormat = int(binary.LittleEndian.Uint16(fmtData[0:2]))
+	r.NumChans = int(binary.LittleEndian.Uint16(fmtData[2:4]))
+	r.SampleRate = int(binary.LittleEndian.Uint32(fmtData[4:8]))
+	r.ByteRate = int(binary.LittleEndian.Uint32(fmtData[8:12]))
+	r.BlockAlign = int(binary.LittleEndian.Uint16(fmtData[12:14]))
+	r.BitsPerSample = int(binary.LittleEndian.Uint16(fmtData[14:16]))
 
 	// read until data chunk
 	chunkHeader := make([]byte, 8)
